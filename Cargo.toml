@@ -1,0 +1,6 @@
+[workspace]
+members = ["aber", "aber-tests"]
+
+[profile.release]
+strip = true
+lto = true
