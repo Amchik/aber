@@ -362,8 +362,8 @@ impl Iterator for Lex<'_> {
             }
 
             c if Self::is_ident_start_char(c) => {
-                let len = chars.take_while(|&c| Self::is_ident_middle_char(c)).count();
-                self.linear_offset(1 + len).replace(Ok(Token::Ident))
+                let len: usize = chars.take_while(|&c| Self::is_ident_middle_char(c)).map(|v| v.len_utf8()).sum();
+                self.linear_offset(c.len_utf8() + len).replace(Ok(Token::Ident))
             }
 
             c => self.linear_offset(1).replace(Err(Error::UnknownOperand(c))),
