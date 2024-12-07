@@ -1,56 +1,124 @@
+//! # Aber lexer
+//!
+// TODO: comment
+
 use std::fmt::Display;
 
+/// Kind of lexical[^1] token. Usually wrapped in [`WithPosition<T>`].
+///
+/// [^1]: [`Lex`]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Token {
-    /// Identificator
+    /// Identificator. Can be single char or sequence of chars (eg. `/`, `-`)
+    /// or string (eg. `ident`, `foobar`, `min-max`)
     Ident,
+    /// Comment, span to ignore.
     Comment,
+    /// Integer literal in base10. Can contains `_` chars used as visual separator,
+    /// so `10_000__` and `10000` is a same integers, but `_10` is not an
+    /// [`Token::LiteralInteger`].
     LiteralInteger,
+    /// Float literal. Can contains `_` chars used as visual separator,
+    /// so `10_000.01` and `10000.01` is a same numbers. Note that this literal can ends with `_`
+    /// or dot, so `10.` and `10._` are valid literals.
     LiteralFloat,
+    /// Single char literal is a single utf-8 symbol that can be after `\`, between two `'`
+    /// symbols, eg. `'h'` and `'\e'`. Char cannot be a newline symbol (`\n`). UTF-8 examples of
+    /// this literal: `'ё'` and `'\ё'`. Note that chars `'` and `\` can be written, using second
+    /// variant of syntax: `'\''` and `\\`. Sequences `''`, `'''`, `'\'` are NOT valid
+    /// [`Token::LiteralChar`].
     LiteralChar,
+    /// UTF-8 string literal, contains unescaped string between two `"` symbols. Every single char
+    /// are follow the same rules as chars in [`Token::LiteralChar`]. Some of them is that char
+    /// cannot be a newline char, so this literal is one line. String cannot ends with single `\`
+    /// char (but can with double) so `"\"` isn't valid literal. Example of valid literals:
+    /// `"Πi \'\" \\"`. Literal can contain an empty string: `""`.
     LiteralString,
-    /// Char `:`
+    /// Symbol `:`
     Colon,
-    /// Char `::`
+    /// Symbol `::`
     DoubleColon,
-    /// Char `;`
+    /// Symbol `;`
     SemiColon,
-    /// Char `,`
+    /// Symbol `,`
     Comma,
-    /// Char `(`
+    /// Symbol `(`
     OpenParanthesis,
-    /// Char `)`
+    /// Symbol `)`
     CloseParanthesis,
-    /// Char `{`
+    /// Symbol `{`
     OpenBrace,
-    /// Char `}`
+    /// Symbol `}`
     CloseBrace,
-    /// Char `[`
+    /// Symbol `[`
     OpenBracket,
-    /// Char `]`
+    /// Symbol `]`
     CloseBracket,
-    /// Char `.`
+    /// Symbol `.`
     Dot,
-    /// Char `@`
+    /// Symbol `@`
     At,
-    /// Char `=`
+    /// Symbol `=`
     Equal,
 }
 
+/// Position in code.
+///
+/// [^1]: [`WithPosition`]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Position {
+    /// Line in code. In normal files it starts from `1` but zero is valid value for line.
     pub line: u32,
+    /// Char at line in code. Usually starts from `0`.
     pub char: u32,
 }
 
+/// Describes position of element, like [`Token`]s or any other type.
+///
+/// # Example
+/// ```
+/// # use aber::lex::Token;
+/// use aber::lex::{Position, WithPosition};
+///
+/// let start = Position { line: 1, char: 0 };
+/// let end = Position { line: 1, char: 8 };
+///
+/// // One point:
+/// let span = WithPosition::location(Token::Comma, start);
+/// assert_eq!(span.start, start);
+/// assert_eq!(span.end, None);
+///
+/// // Range:
+/// let span = WithPosition::range(Token::Comma, start, start);
+/// assert_eq!(span.end, Some(start)); // end can equal to start
+///
+/// // Range or dot:
+/// let span = WithPosition::range_or_dot(Token::Comment, start, end);
+/// assert_eq!(span.end, Some(end));
+/// // but if start equals end...
+/// let span = WithPosition::range_or_dot(Token::Comma, start, start);
+/// assert_eq!(span.end, None);
+/// ```
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct WithPosition<T: ?Sized> {
+    /// Start position
     pub start: Position,
+    /// End position. If end is `None` it equals to dot.
     pub end: Option<Position>,
+    /// Wrapped value
     pub value: T,
 }
 
 impl<T> WithPosition<T> {
+    /// Wrap in dot position.
+    ///
+    /// # Example
+    /// ```
+    /// use aber::lex::{Position, WithPosition};
+    ///
+    /// let dot = WithPosition::location((), Position { line: 1, char: 0 });
+    /// assert_eq!(dot.end, None);
+    /// ```
     pub fn location(value: T, start: Position) -> Self {
         WithPosition {
             start,
@@ -59,6 +127,27 @@ impl<T> WithPosition<T> {
         }
     }
 
+    /// Wrap in range. If you need to exclude zero-length range, use [`WithPosition::range_or_dot`].
+    ///
+    /// # Example
+    /// ```
+    /// use aber::lex::{Position, WithPosition};
+    /// 
+    /// let start = Position { line: 1, char: 0 };
+    /// let end = Position { line: 2, char: 2 };
+    ///
+    /// let span = WithPosition::range((), start, end);
+    /// assert_eq!(span.start, start);
+    /// assert_eq!(span.end, Some(end));
+    /// ```
+    ///
+    /// Even if start equals end:
+    /// ```
+    /// # use aber::lex::{Position, WithPosition};
+    /// # let start = Position { line: 1, char: 0 };
+    /// let span = WithPosition::range((), start, start);
+    /// assert_eq!(span.end, Some(start));
+    /// ```
     pub fn range(value: T, start: Position, end: Position) -> Self {
         WithPosition {
             start,
@@ -67,6 +156,24 @@ impl<T> WithPosition<T> {
         }
     }
 
+    /// Wrap in range. If range length is zero (`start == end`) wraps as dot (don't set end
+    /// position).
+    ///
+    /// # Example
+    /// ```
+    /// use aber::lex::{Position, WithPosition};
+    /// 
+    /// let start = Position { line: 1, char: 0 };
+    /// let end = Position { line: 2, char: 2 };
+    ///
+    /// let span = WithPosition::range_or_dot((), start, end);
+    /// assert_eq!(span.start, start);
+    /// assert_eq!(span.end, Some(end));
+    ///
+    /// let dot = WithPosition::range_or_dot((), start, start);
+    /// assert_eq!(dot.start, start);
+    /// assert_eq!(dot.end, None);
+    /// ```
     pub fn range_or_dot(value: T, start: Position, end: Position) -> Self {
         if start == end {
             Self::location(value, start)
@@ -75,6 +182,16 @@ impl<T> WithPosition<T> {
         }
     }
 
+    /// Maps wrapped value.
+    ///
+    /// # Example
+    /// ```
+    /// use aber::lex::{Position, WithPosition};
+    ///
+    /// let span = WithPosition::location(42_u32, Position { line: 4, char: 8 });
+    /// let span = span.map(|v| v / 2);
+    /// assert_eq!(span.value, 21);
+    /// ```
     pub fn map<U, F>(self, f: F) -> WithPosition<U>
     where
         F: FnOnce(T) -> U,
@@ -86,6 +203,16 @@ impl<T> WithPosition<T> {
         }
     }
 
+    /// Drop previous value and replace it to new.
+    ///
+    /// # Example
+    /// ```
+    /// use aber::lex::{Position, WithPosition};
+    ///
+    /// let span = WithPosition::location(42_u32, Position { line: 4, char: 8 });
+    /// let span = span.replace("Hello!");
+    /// assert_eq!(span.value, "Hello!");
+    /// ```
     pub fn replace<U>(self, new_value: U) -> WithPosition<U> {
         WithPosition {
             start: self.start,
@@ -146,6 +273,33 @@ impl Display for Error {
 }
 impl std::error::Error for Error {}
 
+/// Aber lexer. See module-level documentation for more.
+/// Lexer is an iterator.
+///
+/// # Example
+/// ```
+/// use aber::lex::{Lex, Token, WithPosition, Position};
+///
+/// let input = "foo 42;";
+/// let result: Vec<_> = Lex::new(input).map(|v| v.map(Result::unwrap)).collect();
+///
+/// assert_eq!(&result[..], &[
+///     WithPosition::range(
+///         Token::Ident,
+///         Position { line: 1, char: 0 },
+///         Position { line: 1, char: 2 },
+///     ),
+///     WithPosition::range(
+///         Token::LiteralInteger,
+///         Position { line: 1, char: 4 },
+///         Position { line: 1, char: 5 },
+///     ),
+///     WithPosition::location(
+///         Token::SemiColon,
+///         Position { line: 1, char: 6 },
+///     ),
+/// ]);
+/// ```
 pub struct Lex<'a> {
     v: &'a str,
     offset: usize,
@@ -153,6 +307,7 @@ pub struct Lex<'a> {
 }
 
 impl<'a> Lex<'a> {
+    /// Creates new [`Lex`] from string.
     pub fn new(v: &'a str) -> Self {
         Lex {
             v,
@@ -161,6 +316,7 @@ impl<'a> Lex<'a> {
         }
     }
 
+    /// Current lexer location.
     pub fn location(&self) -> usize {
         self.offset
     }
@@ -201,6 +357,8 @@ impl<'a> Lex<'a> {
         }
     }
 
+    /// Steps one char or `\` + char and returns it's utf-8 length. If failed to get next char
+    /// returns `None`. Also returns found char. If char is newline, returns `None`
     fn step_char<const STOP: char>(&self, relative_offset: usize) -> Option<(usize, char)> {
         let mut chars = self.v[self.offset + relative_offset..].chars();
         match chars.next()? {
@@ -217,6 +375,7 @@ impl<'a> Lex<'a> {
         }
     }
 
+    /// Works like `step_char`, stops at `"` symbol. Returns `None` on newline.
     fn step_str(&self, relative_offset: usize) -> Option<usize> {
         let mut chars = self.v[self.offset + relative_offset..].chars();
         let mut counter = 0;
