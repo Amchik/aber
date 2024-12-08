@@ -524,8 +524,13 @@ impl Iterator for Lex<'_> {
 
             '/' => {
                 if chars.next() == Some('/') {
-                    self.linear_offset(self.v.bytes().take_while(|&p| p != b'\n').count())
-                        .replace(Ok(Token::Comment))
+                    self.linear_offset(
+                        2 + chars
+                            .take_while(|&p| p != '\n')
+                            .map(char::len_utf8)
+                            .sum::<usize>(),
+                    )
+                    .replace(Ok(Token::Comment))
                 } else {
                     self.linear_offset(1).replace(Ok(Token::Ident))
                     // NOTE: make Ident("/")?
