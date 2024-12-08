@@ -422,25 +422,11 @@ impl<'a> Lex<'a> {
         .linear(self.offset - offset, self.offset)
     }
 
+    /// Works like `step_char`, stops at `"` symbol. Returns `None` on newline.
+    ///
+    /// *`step_char` (removed)*:
     /// Steps one char or `\` + char and returns it's utf-8 length. If failed to get next char
     /// returns `None`. Also returns found char. If char is newline, returns `None`
-    fn step_char<const STOP: char>(&self, relative_offset: usize) -> Option<(usize, char)> {
-        let mut chars = self.v[self.offset + relative_offset..].chars();
-        match chars.next()? {
-            '\n' => None,
-            '\\' => {
-                let c = chars.next()?;
-                if c == '\n' {
-                    return None;
-                }
-                Some((1 + c.len_utf8(), c))
-            }
-            c if c == STOP => Some((0, STOP)),
-            c => Some((c.len_utf8(), c)),
-        }
-    }
-
-    /// Works like `step_char`, stops at `"` symbol. Returns `None` on newline.
     fn step_str(&self, relative_offset: usize) -> Option<usize> {
         let mut chars = self.v[self.offset + relative_offset..].chars();
         let mut counter = 0;
@@ -573,11 +559,26 @@ impl Iterator for Lex<'_> {
                 }
             }
 
-            '\'' => {
-                if let Some((len, _)) = self.step_char::<'\''>(1) {
-                    self.linear_offset(2 + len).replace(Ok(Token::LiteralChar))
+            '\'' => 'brk: {
+                let Some(c) = chars.next() else {
+                    break 'brk self.linear_offset(1).replace(Err(Error::UnclosedChar));
+                };
+                let len = if c == '\\' {
+                    match chars.next() {
+                        Some(c) => c.len_utf8() + 1,
+                        _ => break 'brk self.linear_offset(2).replace(Err(Error::UnclosedChar)),
+                    }
+                } else if c == '\'' {
+                    break 'brk self.linear_offset(2).replace(Err(Error::UnclosedChar));
                 } else {
-                    self.linear_offset(1).replace(Err(Error::UnclosedChar))
+                    c.len_utf8()
+                };
+
+                if let Some('\'') = chars.next() {
+                    self.linear_offset(len + 2).replace(Ok(Token::LiteralChar))
+                } else {
+                    self.linear_offset(len + 1)
+                        .replace(Err(Error::UnclosedChar))
                 }
             }
 

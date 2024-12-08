@@ -75,7 +75,7 @@ fn parse_int(input: &str) -> Option<i64> {
 fn escape_char(c: char) -> Option<char> {
     match c {
         '0'..='9' => Some((c as u8 - b'0') as char),
-        '\\' => Some('\\'),
+        '\\' | '\"' | '\'' => Some(c),
         'a' => Some(7 as char),
         'b' => Some(8 as char),
         't' => Some(9 as char),
