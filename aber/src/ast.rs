@@ -1,3 +1,10 @@
+//! # Abstract Syntax Tree
+//!
+//! Parser for lexical tokens[^1]. Main function are [`aber::ast::parse`].
+//!
+//!
+//! [^1]: [`aber::lex::Token`]
+
 use std::{borrow::Cow, iter::Peekable};
 
 use crate::lex::{Token, WithLinearPosition, WithPosition};
@@ -17,7 +24,7 @@ pub enum Unit<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum SyntaxCall<'a> {
     Opaque(Unit<'a>),
-    Generic(Unit<'a>, Vec<ExpressionUnit<'a>>),
+    Generic(Unit<'a>, Vec<Vec<ExpressionUnit<'a>>>),
     Tuple(Vec<ExpressionUnit<'a>>),
     Block(Vec<Expression<'a>>),
 }
@@ -258,6 +265,7 @@ fn parse_expr_unit<'a>(
             }) => {
                 _ = tokens.next();
 
+                let mut generics = Vec::new();
                 let mut exprs = Vec::new();
 
                 loop {
@@ -266,12 +274,15 @@ fn parse_expr_unit<'a>(
                     match peek {
                         Some(Token::Comma) => {
                             _ = tokens.next();
+                            generics.push(exprs);
+                            exprs = Vec::new();
                             if tokens.peek().map(|v| v.value.value) == Some(Token::CloseBracket) {
                                 _ = tokens.next();
                                 break;
                             }
                         }
                         Some(Token::CloseBracket) => {
+                            generics.push(exprs);
                             _ = tokens.next();
                             break;
                         }
@@ -279,7 +290,7 @@ fn parse_expr_unit<'a>(
                     }
                 }
 
-                SyntaxCall::Generic(unit, exprs)
+                SyntaxCall::Generic(unit, generics)
             }
             _ => SyntaxCall::Opaque(unit),
         }
