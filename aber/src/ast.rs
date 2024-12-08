@@ -208,6 +208,7 @@ fn parse_expr_unit<'a>(
             Token::OpenParanthesis => {
                 let peek = tokens.peek().map(|v| v.value.value);
                 let exprs = if peek == Some(Token::CloseParanthesis) {
+                    _ = tokens.next();
                     Vec::new()
                 } else {
                     let mut exprs = Vec::new();
