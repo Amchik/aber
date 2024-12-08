@@ -19,5 +19,5 @@ call-library[name: "libc", function: "system"] ffi::c_str::from "rm -rf aber/\0"
 
 ###### @Hedgehogo live reaction
 
-![.github/hedgehogo.png]
+![.github/hedgehogo.png](.github/hedgehogo.png)
 
