@@ -132,7 +132,7 @@ impl<T> WithPosition<T> {
     /// # Example
     /// ```
     /// use aber::lex::{Position, WithPosition};
-    /// 
+    ///
     /// let start = Position { line: 1, char: 0 };
     /// let end = Position { line: 2, char: 2 };
     ///
@@ -162,7 +162,7 @@ impl<T> WithPosition<T> {
     /// # Example
     /// ```
     /// use aber::lex::{Position, WithPosition};
-    /// 
+    ///
     /// let start = Position { line: 1, char: 0 };
     /// let end = Position { line: 2, char: 2 };
     ///
@@ -220,6 +220,22 @@ impl<T> WithPosition<T> {
             value: new_value,
         }
     }
+
+    pub fn extract(&self) -> WithPosition<()> {
+        WithPosition {
+            start: self.start,
+            end: self.end,
+            value: (),
+        }
+    }
+
+    pub fn linear(self, offset_start: usize, offset_end: usize) -> WithLinearPosition<T> {
+        WithLinearPosition {
+            offset_start,
+            offset_end,
+            value: self,
+        }
+    }
 }
 
 impl<T: Display> Display for WithPosition<T> {
@@ -244,6 +260,54 @@ impl<T: Display> Display for WithPosition<T> {
                 "{}, line {} char {}",
                 self.value, self.start.line, self.start.char
             )
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct WithLinearPosition<T: ?Sized> {
+    pub offset_start: usize,
+    pub offset_end: usize,
+    pub value: WithPosition<T>,
+}
+
+impl<T> WithLinearPosition<T> {
+    pub(crate) fn zero(value: T) -> Self {
+        WithLinearPosition {
+            offset_start: 0,
+            offset_end: 0,
+            value: WithPosition {
+                start: Position { line: 0, char: 0 },
+                end: None,
+                value,
+            },
+        }
+    }
+
+    pub fn map<U, F>(self, f: F) -> WithLinearPosition<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        WithLinearPosition {
+            offset_start: self.offset_start,
+            offset_end: self.offset_end,
+            value: self.value.map(f),
+        }
+    }
+
+    pub fn replace<U>(self, new_value: U) -> WithLinearPosition<U> {
+        WithLinearPosition {
+            offset_start: self.offset_start,
+            offset_end: self.offset_end,
+            value: self.value.replace(new_value),
+        }
+    }
+
+    pub fn extract(&self) -> WithLinearPosition<()> {
+        WithLinearPosition {
+            offset_start: self.offset_start,
+            offset_end: self.offset_end,
+            value: self.value.extract(),
         }
     }
 }
@@ -337,7 +401,7 @@ impl<'a> Lex<'a> {
             });
     }
 
-    fn linear_offset(&mut self, offset: usize) -> WithPosition<()> {
+    fn linear_offset(&mut self, offset: usize) -> WithLinearPosition<()> {
         debug_assert!(
             offset > 0,
             "`offset` should be at least 1 because end position is exclusive"
@@ -355,6 +419,7 @@ impl<'a> Lex<'a> {
             end: Some(end).filter(|_| end != start),
             value: (),
         }
+        .linear(self.offset - offset, self.offset)
     }
 
     /// Steps one char or `\` + char and returns it's utf-8 length. If failed to get next char
@@ -426,7 +491,7 @@ impl<'a> Lex<'a> {
 }
 
 impl Iterator for Lex<'_> {
-    type Item = WithPosition<Result<Token, Error>>;
+    type Item = WithLinearPosition<Result<Token, Error>>;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.skip_whitespaces();
@@ -521,8 +586,12 @@ impl Iterator for Lex<'_> {
             }
 
             c if Self::is_ident_start_char(c) => {
-                let len: usize = chars.take_while(|&c| Self::is_ident_middle_char(c)).map(|v| v.len_utf8()).sum();
-                self.linear_offset(c.len_utf8() + len).replace(Ok(Token::Ident))
+                let len: usize = chars
+                    .take_while(|&c| Self::is_ident_middle_char(c))
+                    .map(|v| v.len_utf8())
+                    .sum();
+                self.linear_offset(c.len_utf8() + len)
+                    .replace(Ok(Token::Ident))
             }
 
             c => self.linear_offset(1).replace(Err(Error::UnknownOperand(c))),

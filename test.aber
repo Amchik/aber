@@ -1,0 +1,8 @@
+// Comment
+function-call;
+n:; // Pair
+
+define-function[foobar] n: {
+    n .mul 2;
+};
+
