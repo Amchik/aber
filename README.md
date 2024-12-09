@@ -25,3 +25,9 @@ call-library[name: "libc", function: "system"] ffi::c_str::from "rm -rf aber/\0"
 
 ![.github/hedgehogo-3.png](.github/hedgehogo-3.png)
 
+![.github/hedgehogo-4.png](.github/hedgehogo-4.png)
+
+![.github/hedgehogo-5.png](.github/hedgehogo-5.png)
+
+![.github/hedgehogo-6.png](.github/hedgehogo-6.png)
+
